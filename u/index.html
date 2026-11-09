@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reptivity profile</title><meta name="description" content="A Reptivity profile. Open it in the Reptivity app."><link rel="icon" href="../icon.png"><style>
+:root{--bg:#fff;--fg:#16161a;--muted:#5f6068;--accent:#E01E2B}
+@media (prefers-color-scheme:dark){:root{--bg:#0E0E10;--fg:#f2f2f4;--muted:#a1a1aa;--accent:#FF3340}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:30px;line-height:1.2;margin:0 0 4px}h2{font-size:19px;margin:32px 0 8px}
+.muted{color:var(--muted)}a{color:var(--accent)}ul{padding-left:20px}li{margin:6px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:22px;text-decoration:none;color:var(--fg);margin-bottom:28px}
+.brand span{color:var(--accent)}
+.button{display:inline-block;background:#E01E2B;color:#fff;padding:12px 22px;border-radius:12px;text-decoration:none;font-weight:700}</style></head><body><main><a class="brand" href="../"><img src="../icon.png" width="40" height="40" style="border-radius:10px" alt=""><b>Rep<span>tivity</span></b></a><h1 id="who">A Reptivity profile</h1>
+<p class="muted">Reptivity is a workout tracker with 3D exercise guides, strength ranks and leagues with friends.</p>
+<p><a id="open" class="button" href="#">Open in Reptivity</a></p>
+<p class="muted">Don’t have the app yet? Reptivity is coming soon to the App Store and Google Play. Once you’ve installed it, come back to this link to see the profile.</p>
+<script>
+// Shared from the app as /u/?id=<account id>&u=<username>; hands over to the app's own link.
+const params = new URLSearchParams(location.search);
+const id = params.get('id') || '';
+const username = (params.get('u') || '').replace(/[^a-zA-Z0-9._]/g, '');
+if (/^[0-9a-f-]{36}$/i.test(id)) {
+  const appLink = 'myaiapp://user/' + id;
+  document.getElementById('open').href = appLink;
+  if (username) document.getElementById('who').textContent = '@' + username + ' on Reptivity';
+  // Try the app straight away; if it isn't installed, the page simply stays open.
+  setTimeout(() => { location.href = appLink; }, 300);
+} else {
+  document.getElementById('open').style.display = 'none';
+}
+</script>
+<p style="margin-top:32px"><a href="../">Reptivity</a> · <a href="../privacy/">Privacy</a> · <a href="../terms/">Terms</a></p></main></body></html>
