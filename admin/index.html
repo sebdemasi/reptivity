@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Reptivity Dashboard</title>
+<style>
+:root{--bg:#f6f6f8;--card:#fff;--fg:#16161a;--muted:#5f6068;--line:#e4e4ea;--accent:#E01E2B;--soft:#fbdddf;--ok:#16a34a;--warn:#d97706}
+@media (prefers-color-scheme:dark){:root{--bg:#0E0E10;--card:#18181c;--fg:#f2f2f4;--muted:#a1a1aa;--line:#2a2a31;--accent:#FF3340;--soft:#330a0d;--ok:#22c55e;--warn:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:24px;margin:0}h2{font-size:18px;margin:24px 0 10px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:22px}.brand span{color:var(--accent)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.muted{color:var(--muted)}.small{font-size:13px}
+input,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--accent);color:#fff}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button.danger{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--accent);color:#fff;font-size:12px;text-align:center;margin-left:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.stat .n{font-size:26px;font-weight:800}.stat .l{color:var(--muted);font-size:13px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:10px}
+.bars div{flex:1;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px;position:relative}
+.bars div span{position:absolute;top:-18px;left:0;right:0;text-align:center;font-size:11px;color:var(--muted)}
+.list{display:grid;gap:10px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{font-size:11px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:6px;background:var(--soft);color:var(--accent);text-transform:uppercase}
+.pill.ok{background:transparent;color:var(--ok);border:1px solid var(--ok)}
+.quote{border-left:3px solid var(--line);padding:6px 10px;margin:8px 0;white-space:pre-wrap;word-break:break-word}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
+.avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;background:var(--line);vertical-align:middle}
+.toggle{padding:5px 9px;font-size:12px}
+.hidden{display:none}
+#msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none}
+@media (max-width:640px){.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div class="brand">Rep<span>tivity</span> <span class="muted" style="color:var(--muted);font-weight:600;font-size:16px">Dashboard</span></div>
+    <div id="who" class="row small muted"></div>
+  </div>
+
+  <section id="signin" class="card hidden" style="max-width:420px">
+    <h1>Developer sign-in</h1>
+    <p class="muted small">Use your Reptivity account. Only accounts in the developers table can see the dashboard.</p>
+    <form id="pwForm" class="list">
+      <input id="email" type="email" placeholder="Email" autocomplete="email" required>
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+      <button type="button" class="ghost" id="magic">Email me a sign-in link instead</button>
+      <button type="button" class="ghost" id="google">Sign in with Google</button>
+    </form>
+  </section>
+
+  <section id="denied" class="card hidden">
+    <h1>Not a developer</h1>
+    <p class="muted">This account isn't in the developers table. Add it in Supabase → Table Editor → developers, then reload.</p>
+    <button class="ghost" id="signout2">Sign out</button>
+  </section>
+
+  <section id="app" class="hidden">
+    <div class="tabs">
+      <button data-tab="stats" class="on">Stats</button>
+      <button data-tab="reports">Reports <span id="nReports" class="badge hidden"></span></button>
+      <button data-tab="users">Users</button>
+      <button data-tab="inbox">Inbox <span id="nInbox" class="badge hidden"></span></button>
+    </div>
+
+    <div id="tab-stats"></div>
+    <div id="tab-reports" class="hidden"></div>
+    <div id="tab-users" class="hidden">
+      <div class="row" style="margin-bottom:12px"><input id="userSearch" placeholder="Search by name or @username" style="flex:1"><button id="userGo">Search</button></div>
+      <div class="card" style="overflow-x:auto"><table><thead><tr><th>User</th><th class="hide-sm">Joined</th><th class="hide-sm">Last seen</th><th>Banned</th><th>Elite</th><th>Dev</th></tr></thead><tbody id="userRows"></tbody></table></div>
+    </div>
+    <div id="tab-inbox" class="hidden"></div>
+  </section>
+</main>
+<div id="msg"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL = 'https://yulqaprpkytkzmfpxhca.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_mD1yxHvcuC2K0UGli1mJtQ_Iox5Pvq8';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const when = (t) => (t ? new Date(t).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
+const ago = (t) => {
+  if (!t) return '—';
+  const d = (Date.now() - new Date(t)) / 864e5;
+  return d < 1 ? 'today' : d < 2 ? 'yesterday' : `${Math.floor(d)}d ago`;
+};
+function toast(text) {
+  const m = $('msg');
+  m.textContent = text;
+  m.style.opacity = 1;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => (m.style.opacity = 0), 2200);
+}
+async function call(promise, ok) {
+  const { data, error } = await promise;
+  if (error) { toast(error.message); throw error; }
+  if (ok) toast(ok);
+  return data;
+}
+const show = (id) => ['signin', 'denied', 'app'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
+
+// ---------- Sign-in ----------
+$('pwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  await call(sb.auth.signInWithPassword({ email: $('email').value, password: $('password').value }));
+};
+$('magic').onclick = async () => {
+  if (!$('email').value) return toast('Enter your email first');
+  await call(sb.auth.signInWithOtp({ email: $('email').value, options: { shouldCreateUser: false, emailRedirectTo: location.href.split('#')[0] } }), 'Check your email for the link');
+};
+$('google').onclick = () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.href.split('#')[0] } });
+const signOut = async () => { await sb.auth.signOut(); location.reload(); };
+$('signout2').onclick = signOut;
+
+async function start() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return show('signin');
+  $('who').innerHTML = `${esc(session.user.email)} <button class="ghost toggle" id="signout">Sign out</button>`;
+  $('signout').onclick = signOut;
+  const { data: isDev } = await sb.rpc('is_developer');
+  if (!isDev) return show('denied');
+  show('app');
+  loadStats();
+  loadReports();
+  loadInbox();
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  ['stats', 'reports', 'users', 'inbox'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+  if (b.dataset.tab === 'users' && !$('userRows').children.length) loadUsers();
+}));
+
+// ---------- Stats ----------
+async function loadStats() {
+  const s = await call(sb.rpc('admin_stats'));
+  const tiles = [
+    ['users', 'Accounts'], ['signups_7d', 'New this week'], ['signups_30d', 'New this month'], ['active_7d', 'Opened app (7 days)'],
+    ['trained_7d', 'Trained (7 days)'], ['shared_workouts', 'Shared workouts'], ['comments', 'Comments'], ['leagues', 'Leagues'],
+    ['elite_grants', 'Elite given'], ['open_reports', 'Open reports'], ['new_feedback', 'New feedback'],
+  ];
+  const weeks = s.weekly_signups ?? [];
+  const max = Math.max(1, ...weeks.map((w) => w.count));
+  $('tab-stats').innerHTML = `
+    <div class="grid">${tiles.map(([k, l]) => `<div class="card stat"><div class="n">${s[k] ?? 0}</div><div class="l">${l}</div></div>`).join('')}</div>
+    <h2>Sign-ups per week</h2>
+    <div class="card"><div class="bars">${weeks.map((w) => `<div style="height:${(w.count / max) * 100}%" title="Week of ${w.week}: ${w.count}"><span>${w.count}</span></div>`).join('') || '<p class="muted">No sign-ups in the last 12 weeks.</p>'}</div>
+    <div class="row muted small" style="justify-content:space-between;margin-top:6px"><span>${weeks[0]?.week ?? ''}</span><span>${weeks[weeks.length - 1]?.week ?? ''}</span></div></div>
+    <p class="muted small">Store subscriptions (App Store / Google Play) are in the RevenueCat dashboard.</p>`;
+  badge('nReports', s.open_reports);
+  badge('nInbox', s.new_feedback);
+}
+function badge(id, n) {
+  $(id).textContent = n;
+  $(id).classList.toggle('hidden', !n);
+}
+
+// ---------- Reports ----------
+async function loadReports() {
+  const reports = await call(sb.from('reports').select('*').order('status').order('created_at', { ascending: false }).limit(100));
+  const ids = [...new Set(reports.flatMap((r) => [r.reporter_id, r.reported_user_id]).filter(Boolean))];
+  const people = ids.length ? await call(sb.from('profiles').select('id, username, name, banned').in('id', ids)) : [];
+  const who = (id) => people.find((p) => p.id === id);
+  const comments = reports.filter((r) => r.content_type === 'comment').map((r) => r.content_id);
+  const workouts = reports.filter((r) => r.content_type === 'workout').map((r) => r.content_id);
+  const cs = comments.length ? await call(sb.from('workout_comments').select('id, body').in('id', comments)) : [];
+  const ws = workouts.length ? await call(sb.from('workouts').select('id, name, note, media').in('id', workouts)) : [];
+  const content = (r) => {
+    if (r.content_type === 'comment') {
+      const c = cs.find((x) => x.id === r.content_id);
+      return c ? `<div class="quote">${esc(c.body)}</div>` : '<p class="muted small">Comment already removed.</p>';
+    }
+    if (r.content_type === 'workout') {
+      const w = ws.find((x) => x.id === r.content_id);
+      if (!w) return '<p class="muted small">Workout already removed.</p>';
+      const photos = (w.media ?? []).filter((m) => m.url && m.type === 'image').map((m) => `<a href="${esc(m.url)}" target="_blank"><img src="${esc(m.url)}" style="height:90px;border-radius:8px;margin-right:6px"></a>`).join('');
+      return `<div class="quote"><b>${esc(w.name)}</b>${w.note ? '\n' + esc(w.note) : ''}</div>${photos}`;
+    }
+    const p = who(r.reported_user_id);
+    return `<p class="small">Profile: <b>${esc(p?.name)}</b> @${esc(p?.username)}</p>`;
+  };
+  $('tab-reports').innerHTML = reports.length ? `<div class="list">${reports.map((r) => {
+    const target = who(r.reported_user_id);
+    return `<div class="card">
+      <div class="row"><span class="pill ${r.status === 'resolved' ? 'ok' : ''}">${esc(r.status)}</span><b>${esc(r.reason)}</b><span class="muted small">${esc(r.content_type)} · ${when(r.created_at)}</span></div>
+      ${content(r)}
+      ${r.details ? `<p class="small">${esc(r.details)}</p>` : ''}
+      <p class="small muted">Reported by @${esc(who(r.reporter_id)?.username ?? '?')} · about @${esc(target?.username ?? '?')}${target?.banned ? ' (banned)' : ''}</p>
+      <div class="row">
+        ${r.content_type !== 'profile' ? `<button class="danger" onclick="removeContent('${r.content_type}','${r.content_id}','${r.id}')">Remove ${r.content_type}</button>` : ''}
+        ${target ? `<button class="danger" onclick="setFlag('admin_set_banned','${target.id}',${!target.banned},'${target.banned ? 'Unbanned' : 'Banned'}')">${target.banned ? 'Unban' : 'Ban'} @${esc(target.username)}</button>` : ''}
+        ${r.status === 'open' ? `<button class="ghost" onclick="resolve('${r.id}')">Mark resolved</button>` : ''}
+      </div></div>`;
+  }).join('')}</div>` : '<div class="card muted">No reports. 🎉</div>';
+}
+async function removeContent(type, id, reportId) {
+  if (!confirm(`Remove this ${type} for everyone?`)) return;
+  await call(sb.from(type === 'comment' ? 'workout_comments' : 'workouts').delete().eq('id', id), 'Removed');
+  await resolve(reportId);
+}
+async function resolve(id) {
+  await call(sb.from('reports').update({ status: 'resolved' }).eq('id', id), 'Resolved');
+  loadReports();
+  loadStats();
+}
+
+// ---------- Users ----------
+async function loadUsers() {
+  const rows = await call(sb.rpc('admin_users', { search: $('userSearch').value.trim() }));
+  $('userRows').innerHTML = rows.map((u) => `<tr>
+    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <b>${esc(u.name || u.username)}</b> <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span></td>
+    <td class="hide-sm small">${when(u.created_at)}</td>
+    <td class="hide-sm small">${ago(u.last_sign_in_at)}</td>
+    <td>${flag('admin_set_banned', u.id, u.banned, 'Banned')}</td>
+    <td>${flag('admin_set_elite', u.id, u.elite, 'Elite')}</td>
+    <td>${flag('admin_set_developer', u.id, u.developer, 'Dev')}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No accounts found.</td></tr>';
+}
+const flag = (fn, id, on, label) =>
+  `<button class="toggle ${on ? '' : 'ghost'}" onclick="setFlag('${fn}','${id}',${!on},'${label} ${on ? 'off' : 'on'}')">${on ? 'Yes' : 'No'}</button>`;
+async function setFlag(fn, id, value, done) {
+  if (fn !== 'admin_set_elite' && !confirm(`${done}?`)) return;
+  await call(sb.rpc(fn, { target: id, value }), done);
+  loadUsers();
+  loadReports();
+  loadStats();
+}
+$('userGo').onclick = loadUsers;
+$('userSearch').onkeydown = (e) => e.key === 'Enter' && loadUsers();
+
+// ---------- Inbox ----------
+async function loadInbox() {
+  const items = await call(sb.from('feedback').select('*').order('status').order('created_at', { ascending: false }).limit(200));
+  const ids = [...new Set(items.map((f) => f.user_id).filter(Boolean))];
+  const people = ids.length ? await call(sb.from('profiles').select('id, username, name').in('id', ids)) : [];
+  const kinds = { feedback: 'Feedback', exercise: 'Exercise request', bug: 'Bug report' };
+  $('tab-inbox').innerHTML = items.length ? `<div class="list">${items.map((f) => {
+    const p = people.find((x) => x.id === f.user_id);
+    return `<div class="card">
+      <div class="row"><span class="pill ${f.status === 'done' ? 'ok' : ''}">${esc(kinds[f.kind] ?? f.kind)}</span>${f.rating ? `<span>${'★'.repeat(f.rating)}<span class="muted">${'★'.repeat(5 - f.rating)}</span></span>` : ''}<span class="muted small">${when(f.created_at)}</span></div>
+      <div class="quote">${esc(f.message)}</div>
+      <p class="small muted">@${esc(p?.username ?? 'unknown')} · Reptivity ${esc(f.app_version)} · ${esc(f.platform)}</p>
+      ${f.status === 'new' ? `<button class="ghost" onclick="markDone('${f.id}')">Mark done</button>` : ''}
+    </div>`;
+  }).join('')}</div>` : '<div class="card muted">No feedback yet.</div>';
+}
+async function markDone(id) {
+  await call(sb.from('feedback').update({ status: 'done' }).eq('id', id), 'Marked done');
+  loadInbox();
+  loadStats();
+}
+
+sb.auth.onAuthStateChange((event) => event === 'SIGNED_IN' && start());
+start();
+</script>
+</body>
+</html>
