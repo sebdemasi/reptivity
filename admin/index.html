@@ -126,9 +126,9 @@ $('pwForm').onsubmit = async (e) => {
 };
 $('magic').onclick = async () => {
   if (!$('email').value) return toast('Enter your email first');
-  await call(sb.auth.signInWithOtp({ email: $('email').value, options: { shouldCreateUser: false, emailRedirectTo: location.href.split('#')[0] } }), 'Check your email for the link');
+  await call(sb.auth.signInWithOtp({ email: $('email').value, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }), 'Check your email for the link');
 };
-$('google').onclick = () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.href.split('#')[0] } });
+$('google').onclick = () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
 const signOut = async () => { await sb.auth.signOut(); location.reload(); };
 $('signout2').onclick = signOut;
 
