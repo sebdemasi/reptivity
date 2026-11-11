@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Reptivity Dashboard</title>
+<title>Endeavour Dashboard</title>
 <style>
 :root{--bg:#f6f6f8;--card:#fff;--fg:#16161a;--muted:#5f6068;--line:#e4e4ea;--accent:#E01E2B;--soft:#fbdddf;--ok:#16a34a;--warn:#d97706}
 @media (prefers-color-scheme:dark){:root{--bg:#0E0E10;--card:#18181c;--fg:#f2f2f4;--muted:#a1a1aa;--line:#2a2a31;--accent:#FF3340;--soft:#330a0d;--ok:#22c55e;--warn:#fbbf24}}
@@ -49,13 +49,13 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
 <body>
 <main>
   <div class="top">
-    <div class="brand">Rep<span>tivity</span> <span class="muted" style="color:var(--muted);font-weight:600;font-size:16px">Dashboard</span></div>
+    <div class="brand">Endeavour <span class="muted" style="color:var(--muted);font-weight:600;font-size:16px">Dashboard</span></div>
     <div id="who" class="row small muted"></div>
   </div>
 
   <section id="signin" class="card hidden" style="max-width:420px">
     <h1>Developer sign-in</h1>
-    <p class="muted small">Use your Reptivity account. Only accounts in the developers table can see the dashboard.</p>
+    <p class="muted small">Use your Endeavour account. Only accounts in the developers table can see the dashboard.</p>
     <form id="pwForm" class="list">
       <input id="email" type="email" placeholder="Email" autocomplete="email" required>
       <input id="password" type="password" placeholder="Password" autocomplete="current-password">
@@ -180,7 +180,7 @@ async function loadStats() {
       <p><a href="${ANDROID_PAGE}" target="_blank" rel="noopener"><b>${ANDROID_PAGE.replace('https://', '')}</b></a></p>
       <p class="small muted" id="apkLatest">Checking for the latest build…</p>
       <div class="row"><button onclick="copyAndroidLink()">Copy link</button>${navigator.share ? '<button class="ghost" onclick="shareAndroidLink()">Share…</button>' : ''}<a href="https://github.com/sebdemasi/reptivity/releases/new" target="_blank" rel="noopener"><button class="ghost">Upload new build</button></a></div>
-      <p class="small muted">To upload: new tag (e.g. android-2025-12-01), attach the APK renamed to exactly <b>Reptivity.apk</b>, Publish.</p>
+      <p class="small muted">To upload: new tag (e.g. android-2025-12-01), attach the APK renamed to exactly <b>Endeavour.apk</b>, Publish.</p>
     </div>
     <p class="muted small">Store subscriptions (App Store / Google Play) are in the RevenueCat dashboard.</p>`;
   loadApkInfo();
@@ -192,7 +192,7 @@ async function copyAndroidLink() {
   try { await navigator.clipboard.writeText(ANDROID_PAGE); toast('Link copied'); } catch { prompt('Copy this link:', ANDROID_PAGE); }
 }
 function shareAndroidLink() {
-  navigator.share({ title: 'Reptivity for Android', text: 'Install the Reptivity test app:', url: ANDROID_PAGE }).catch(() => {});
+  navigator.share({ title: 'Endeavour for Android', text: 'Install the Endeavour test app:', url: ANDROID_PAGE }).catch(() => {});
 }
 async function loadApkInfo() {
   const el = $('apkLatest');
@@ -200,10 +200,10 @@ async function loadApkInfo() {
     const r = await fetch('https://api.github.com/repos/sebdemasi/reptivity/releases/latest');
     if (!r.ok) { el.textContent = 'No build uploaded yet: the link won’t work until you upload one.'; return; }
     const rel = await r.json();
-    const apk = (rel.assets || []).find((a) => a.name === 'Reptivity.apk');
+    const apk = (rel.assets || []).find((a) => a.name === 'Endeavour.apk');
     el.textContent = apk
       ? `Latest build: ${new Date(rel.published_at).toLocaleDateString()} (${rel.tag_name}) · downloaded ${apk.download_count}×`
-      : `Latest release (${rel.tag_name}) has no file named Reptivity.apk, so the link won’t work. Rename the file and re-upload.`;
+      : `Latest release (${rel.tag_name}) has no file named Endeavour.apk, so the link won’t work. Rename the file and re-upload.`;
   } catch { el.textContent = ''; }
 }
 async function setLaunch(days) {
@@ -322,7 +322,7 @@ async function loadInbox() {
     return `<div class="card">
       <div class="row"><span class="pill ${f.status === 'done' ? 'ok' : ''}">${esc(kinds[f.kind] ?? f.kind)}</span>${f.rating ? `<span>${'★'.repeat(f.rating)}<span class="muted">${'★'.repeat(5 - f.rating)}</span></span>` : ''}<span class="muted small">${when(f.created_at)}</span></div>
       <div class="quote">${esc(f.message)}</div>
-      <p class="small muted">@${esc(p?.username ?? 'unknown')} · Reptivity ${esc(f.app_version)} · ${esc(f.platform)}</p>
+      <p class="small muted">@${esc(p?.username ?? 'unknown')} · Endeavour ${esc(f.app_version)} · ${esc(f.platform)}</p>
       ${f.status === 'new' ? `<button class="ghost" onclick="markDone('${f.id}')">Mark done</button>` : ''}
     </div>`;
   }).join('')}</div>` : '<div class="card muted">No feedback yet.</div>';
