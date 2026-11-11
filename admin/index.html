@@ -174,9 +174,37 @@ async function loadStats() {
         ? `<b>on</b> until ${new Date(s.referral_launch_until).toLocaleDateString()}` : '<b>off</b> (1 friend → 1 month only)'}</p>
       <div class="row"><button onclick="setLaunch()">Turn on for…</button><button class="ghost" onclick="setLaunch(0)">Turn off</button></div>
     </div>
+    <h2>Android test build</h2>
+    <div class="card">
+      <p>Send testers this link. It always installs the newest build, so you only send it once.</p>
+      <p><a href="${ANDROID_PAGE}" target="_blank" rel="noopener"><b>${ANDROID_PAGE.replace('https://', '')}</b></a></p>
+      <p class="small muted" id="apkLatest">Checking for the latest build…</p>
+      <div class="row"><button onclick="copyAndroidLink()">Copy link</button>${navigator.share ? '<button class="ghost" onclick="shareAndroidLink()">Share…</button>' : ''}<a href="https://github.com/sebdemasi/reptivity/releases/new" target="_blank" rel="noopener"><button class="ghost">Upload new build</button></a></div>
+      <p class="small muted">To upload: new tag (e.g. android-2025-12-01), attach the APK renamed to exactly <b>Reptivity.apk</b>, Publish.</p>
+    </div>
     <p class="muted small">Store subscriptions (App Store / Google Play) are in the RevenueCat dashboard.</p>`;
+  loadApkInfo();
   badge('nReports', s.open_reports);
   badge('nInbox', s.new_feedback);
+}
+const ANDROID_PAGE = 'https://sebdemasi.github.io/reptivity/android/';
+async function copyAndroidLink() {
+  try { await navigator.clipboard.writeText(ANDROID_PAGE); toast('Link copied'); } catch { prompt('Copy this link:', ANDROID_PAGE); }
+}
+function shareAndroidLink() {
+  navigator.share({ title: 'Reptivity for Android', text: 'Install the Reptivity test app:', url: ANDROID_PAGE }).catch(() => {});
+}
+async function loadApkInfo() {
+  const el = $('apkLatest');
+  try {
+    const r = await fetch('https://api.github.com/repos/sebdemasi/reptivity/releases/latest');
+    if (!r.ok) { el.textContent = 'No build uploaded yet: the link won’t work until you upload one.'; return; }
+    const rel = await r.json();
+    const apk = (rel.assets || []).find((a) => a.name === 'Reptivity.apk');
+    el.textContent = apk
+      ? `Latest build: ${new Date(rel.published_at).toLocaleDateString()} (${rel.tag_name}) · downloaded ${apk.download_count}×`
+      : `Latest release (${rel.tag_name}) has no file named Reptivity.apk, so the link won’t work. Rename the file and re-upload.`;
+  } catch { el.textContent = ''; }
 }
 async function setLaunch(days) {
   if (days === undefined) {
