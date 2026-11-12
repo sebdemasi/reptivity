@@ -57,11 +57,24 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
     <h1>Developer sign-in</h1>
     <p class="muted small">Use your Endeavour account. Only accounts in the developers table can see the dashboard.</p>
     <form id="pwForm" class="list">
-      <input id="email" type="email" placeholder="Email" autocomplete="email" required>
-      <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+      <input id="email" name="email" type="email" placeholder="Email" autocomplete="username" required>
+      <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password">
+      <p class="muted small">Signed up with Google? Sign in with Google once, then use “Set a dashboard password” at the top so your browser can save it.</p>
       <button type="submit">Sign in</button>
       <button type="button" class="ghost" id="magic">Email me a sign-in link instead</button>
       <button type="button" class="ghost" id="google">Sign in with Google</button>
+    </form>
+  </section>
+
+  <!-- A password for this dashboard, so the browser can save it and sign in with one tap. -->
+  <section id="setpw" class="card hidden" style="max-width:420px">
+    <h1>Set a dashboard password</h1>
+    <p class="muted small">Your browser will offer to save it. Next time, the sign-in form fills itself in. It also works as a password for your Endeavour account.</p>
+    <form id="setpwForm" class="list">
+      <input id="pwUser" name="email" type="email" autocomplete="username" readonly>
+      <input id="pwNew" name="new-password" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" minlength="8" required>
+      <button type="submit">Save password</button>
+      <button type="button" class="ghost" id="setpwCancel">Cancel</button>
     </form>
   </section>
 
@@ -94,7 +107,10 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
 <script>
 const SUPABASE_URL = 'https://yulqaprpkytkzmfpxhca.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_mD1yxHvcuC2K0UGli1mJtQ_Iox5Pvq8';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Stays signed in on this browser (the session is kept and refreshed until you sign out).
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+});
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const when = (t) => (t ? new Date(t).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
@@ -116,11 +132,14 @@ async function call(promise, ok) {
   if (ok) toast(ok);
   return data;
 }
-const show = (id) => ['signin', 'denied', 'app'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
+const show = (id) => ['signin', 'setpw', 'denied', 'app'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
 
 // ---------- Sign-in ----------
+// The last email used is filled in for you.
+try { $('email').value = localStorage.getItem('dashEmail') || ''; } catch {}
 $('pwForm').onsubmit = async (e) => {
   e.preventDefault();
+  try { localStorage.setItem('dashEmail', $('email').value); } catch {}
   await call(sb.auth.signInWithPassword({ email: $('email').value, password: $('password').value }));
   start();
 };
@@ -128,15 +147,29 @@ $('magic').onclick = async () => {
   if (!$('email').value) return toast('Enter your email first');
   await call(sb.auth.signInWithOtp({ email: $('email').value, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }), 'Check your email for the link');
 };
-$('google').onclick = () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+// select_account shows the Google accounts this browser is already signed into, so it's usually one tap.
+$('google').onclick = () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } } });
+$('setpwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  await call(sb.auth.updateUser({ password: $('pwNew').value }), 'Password saved. Let your browser save it too.');
+  $('pwNew').value = '';
+  start();
+};
+$('setpwCancel').onclick = () => start();
 const signOut = async () => { await sb.auth.signOut(); location.reload(); };
 $('signout2').onclick = signOut;
 
 async function start() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return show('signin');
-  $('who').innerHTML = `${esc(session.user.email)} <button class="ghost toggle" id="signout">Sign out</button>`;
+  try { localStorage.setItem('dashEmail', session.user.email); } catch {}
+  $('who').innerHTML = `${esc(session.user.email)} <button class="ghost toggle" id="setpwBtn">Set a dashboard password</button> <button class="ghost toggle" id="signout">Sign out</button>`;
   $('signout').onclick = signOut;
+  $('setpwBtn').onclick = () => {
+    $('pwUser').value = session.user.email;
+    show('setpw');
+    $('pwNew').focus();
+  };
   const { data: isDev } = await sb.rpc('is_developer');
   if (!isDev) return show('denied');
   show('app');
