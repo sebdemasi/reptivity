@@ -90,6 +90,7 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
       <button data-tab="reports">Reports <span id="nReports" class="badge hidden"></span></button>
       <button data-tab="users">Users</button>
       <button data-tab="inbox">Inbox <span id="nInbox" class="badge hidden"></span></button>
+      <button data-tab="flags">Flags <span id="nFlags" class="badge hidden"></span></button>
     </div>
 
     <div id="tab-stats"></div>
@@ -99,6 +100,7 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
       <div class="card" style="overflow-x:auto"><table><thead><tr><th>User</th><th class="hide-sm">Joined</th><th class="hide-sm">Last seen</th><th>Banned</th><th>Elite</th><th>Dev</th></tr></thead><tbody id="userRows"></tbody></table></div>
     </div>
     <div id="tab-inbox" class="hidden"></div>
+    <div id="tab-flags" class="hidden"></div>
   </section>
 </main>
 <div id="msg"></div>
@@ -176,12 +178,13 @@ async function start() {
   loadStats();
   loadReports();
   loadInbox();
+  loadFlags();
 }
 
 // ---------- Tabs ----------
 document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  ['stats', 'reports', 'users', 'inbox'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+  ['stats', 'reports', 'users', 'inbox', 'flags'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
   if (b.dataset.tab === 'users' && !$('userRows').children.length) loadUsers();
 }));
 
@@ -191,7 +194,7 @@ async function loadStats() {
   const tiles = [
     ['users', 'Accounts'], ['signups_7d', 'New this week'], ['signups_30d', 'New this month'], ['active_7d', 'Opened app (7 days)'],
     ['trained_7d', 'Trained (7 days)'], ['shared_workouts', 'Shared workouts'], ['comments', 'Comments'], ['leagues', 'Leagues'],
-    ['elite_grants', 'Elite given'], ['open_reports', 'Open reports'], ['new_feedback', 'New feedback'],
+    ['elite_grants', 'Elite given'], ['open_reports', 'Open reports'], ['new_feedback', 'New feedback'], ['open_flags', 'Lifts to check'],
   ];
   const weeks = s.weekly_signups ?? [];
   const max = Math.max(1, ...weeks.map((w) => w.count));
@@ -219,6 +222,7 @@ async function loadStats() {
   loadApkInfo();
   badge('nReports', s.open_reports);
   badge('nInbox', s.new_feedback);
+  badge('nFlags', s.open_flags);
 }
 const ANDROID_PAGE = 'https://sebdemasi.github.io/reptivity/android/';
 async function copyAndroidLink() {
@@ -340,6 +344,7 @@ async function setFlag(fn, id, value, done) {
   loadUsers();
   loadReports();
   loadStats();
+  loadFlags();
 }
 $('userGo').onclick = loadUsers;
 $('userSearch').onkeydown = (e) => e.key === 'Enter' && loadUsers();
@@ -363,6 +368,41 @@ async function loadInbox() {
 async function markDone(id) {
   await call(sb.from('feedback').update({ status: 'done' }).eq('id', id), 'Marked done');
   loadInbox();
+  loadStats();
+}
+
+// ---------- Flags (lifts people confirmed after "Did you really just hit that?") ----------
+async function loadFlags() {
+  const items = await call(sb.from('lift_flags').select('*').order('status').order('created_at', { ascending: false }).limit(200));
+  const ids = [...new Set(items.map((f) => f.user_id))];
+  const people = ids.length ? await call(sb.from('profiles').select('id, username, name, banned').in('id', ids)) : [];
+  const count = (id) => items.filter((f) => f.user_id === id).length;
+  const kg = (v) => (v == null ? '?' : `${+(+v).toFixed(1)} kg`);
+  $('tab-flags').innerHTML = items.length ? `<div class="list">${items.map((f) => {
+    const p = people.find((x) => x.id === f.user_id);
+    const n = count(f.user_id);
+    return `<div class="card">
+      <div class="row">
+        <span class="pill ${f.status === 'open' ? '' : 'ok'}">${f.status === 'open' ? 'To check' : f.status === 'ok' ? 'Looks fine' : 'Dealt with'}</span>
+        <b>@${esc(p?.username ?? 'unknown')}</b>${p?.banned ? ' <span class="pill">banned</span>' : ''}
+        ${n > 1 ? `<span class="pill">${n} flags</span>` : ''}
+        <span class="muted small">${when(f.created_at)}</span>
+      </div>
+      <p><b>${esc(f.exercise_name || f.exercise_id)}</b>: ${kg(f.weight_kg)} × ${f.reps ?? '?'}${f.set_type && f.set_type !== 'normal' ? ` (${esc(f.set_type)} set)` : ''}</p>
+      <p>${f.first_time
+        ? `First time logging it, and already Crystal level or above (≈ ${kg(f.e1rm_kg)} one-rep max).`
+        : `<b>+${f.increase_pct}%</b> on their best one-rep max: ${kg(f.prev_best_kg)} → ${kg(f.e1rm_kg)}.`}</p>
+      <p class="small muted">Set ${f.set_number ?? '?'} of exercise ${f.exercise_number ?? '?'} in “${esc(f.workout_name)}”, ${f.minutes_in ?? '?'} min in${f.body_weight_kg ? ` · body weight ${kg(f.body_weight_kg)}` : ''}</p>
+      <div class="row">
+        ${f.status === 'open' ? `<button class="ghost" onclick="setFlagStatus('${f.id}','ok')">Looks fine</button><button class="ghost" onclick="setFlagStatus('${f.id}','actioned')">Dealt with</button>` : ''}
+        ${p && !p.banned ? `<button class="danger" onclick="setFlag('admin_set_banned','${p.id}',true,'Banned @${esc(p.username)}')">Ban @${esc(p.username)}</button>` : ''}
+      </div>
+    </div>`;
+  }).join('')}</div>` : '<div class="card muted">No flagged lifts. Everyone’s being honest. 💪</div>';
+}
+async function setFlagStatus(id, status) {
+  await call(sb.from('lift_flags').update({ status }).eq('id', id), status === 'ok' ? 'Marked as fine' : 'Marked as dealt with');
+  loadFlags();
   loadStats();
 }
 
