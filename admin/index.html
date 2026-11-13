@@ -44,6 +44,18 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
 .hidden{display:none}
 #msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none}
 @media (max-width:640px){.hide-sm{display:none}}
+.who{background:none;border:0;padding:0;color:var(--fg);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.who:hover{color:var(--accent);text-decoration-color:var(--accent)}
+.prof-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.prof-head img,.prof-head .ph{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--line)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.kv div{font-size:13px;color:var(--muted)}.kv b{display:block;color:var(--fg);font-size:15px}
+details.wk{border-top:1px solid var(--line);padding:10px 0}details.wk:first-child{border-top:0}
+details.wk summary{cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
+details.wk summary::-webkit-details-marker{display:none}
+details.wk summary::before{content:'▸';color:var(--muted)}details.wk[open] summary::before{content:'▾'}
+.ex{margin:10px 0 0 18px}.ex b{font-size:14px}.sets{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pill.priv{background:transparent;color:var(--muted);border:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -107,6 +119,7 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
     </div>
     <div id="tab-inbox" class="hidden"></div>
     <div id="tab-flags" class="hidden"></div>
+    <div id="tab-user" class="hidden"></div>
   </section>
 </main>
 <div id="msg"></div>
@@ -222,7 +235,9 @@ async function startInner() {
 // ---------- Tabs ----------
 document.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  ['stats', 'reports', 'users', 'inbox', 'flags'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+  ['stats', 'reports', 'users', 'inbox', 'flags', 'user'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+  lastTab = b.dataset.tab;
+  openUserId = null;
   if (b.dataset.tab === 'users' && !$('userRows').children.length) loadUsers();
 }));
 
@@ -326,7 +341,7 @@ async function loadReports() {
       <div class="row"><span class="pill ${r.status === 'resolved' ? 'ok' : ''}">${esc(r.status)}</span><b>${esc(r.reason)}</b><span class="muted small">${esc(r.content_type)} · ${when(r.created_at)}</span></div>
       ${content(r)}
       ${r.details ? `<p class="small">${esc(r.details)}</p>` : ''}
-      <p class="small muted">Reported by @${esc(who(r.reporter_id)?.username ?? '?')} · about @${esc(target?.username ?? '?')}${target?.banned ? ' (banned)' : ''}</p>
+      <p class="small muted">Reported by ${userLink(r.reporter_id, who(r.reporter_id)?.username)} · about ${userLink(r.reported_user_id, target?.username)}${target?.banned ? ' (banned)' : ''}</p>
       <div class="row">
         ${r.content_type !== 'profile' ? `<button class="danger" onclick="removeContent('${r.content_type}','${r.content_id}','${r.id}')">Remove ${r.content_type}</button>` : ''}
         ${target ? `<button class="danger" onclick="setFlag('admin_set_banned','${target.id}',${!target.banned},'${target.banned ? 'Unbanned' : 'Banned'}')">${target.banned ? 'Unban' : 'Ban'} @${esc(target.username)}</button>` : ''}
@@ -350,7 +365,7 @@ async function resolve(id) {
 async function loadUsers() {
   const rows = await call(sb.rpc('admin_users', { search: $('userSearch').value.trim() }));
   $('userRows').innerHTML = rows.map((u) => `<tr>
-    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <b>${esc(u.name || u.username)}</b> <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span></td>
+    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button> <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span></td>
     <td class="hide-sm small">${when(u.created_at)}</td>
     <td class="hide-sm small">${ago(u.last_sign_in_at)}</td>
     <td>${flag('admin_set_banned', u.id, u.banned, 'Banned')}</td>
@@ -365,6 +380,7 @@ const flag = (fn, id, on, label) =>
 async function removeElite(id, name) {
   if (!confirm(`Remove Elite from @${name}? (Only Elite you gave them. A paid App Store subscription keeps working.)`)) return;
   await call(sb.rpc('admin_set_elite', { target: id, value: false }), `Elite removed from @${name}`);
+  if (openUserId) openUser(openUserId);
   loadUsers();
   loadStats();
 }
@@ -374,6 +390,7 @@ async function giveElite(id, name) {
   const days = answer.trim() ? parseInt(answer, 10) : null;
   if (answer.trim() && !(days > 0)) return toast('Enter a number of days');
   await call(sb.rpc('admin_set_elite', { target: id, value: true, days }), days ? `Elite for ${days} days` : 'Elite with no end date');
+  if (openUserId) openUser(openUserId);
   loadUsers();
   loadStats();
 }
@@ -384,6 +401,7 @@ async function setFlag(fn, id, value, done) {
   loadReports();
   loadStats();
   loadFlags();
+  if (openUserId) openUser(openUserId);
 }
 $('userGo').onclick = loadUsers;
 $('userSearch').onkeydown = (e) => e.key === 'Enter' && loadUsers();
@@ -439,7 +457,7 @@ async function loadFlags() {
     return `<div class="card">
       <div class="row">
         <span class="pill ${f.status === 'open' ? '' : 'ok'}">${f.status === 'open' ? 'To check' : f.status === 'ok' ? 'Looks fine' : 'Dealt with'}</span>
-        <b>@${esc(p?.username ?? 'unknown')}</b>${p?.banned ? ' <span class="pill">banned</span>' : ''}
+        ${userLink(f.user_id, p?.username)}${p?.banned ? ' <span class="pill">banned</span>' : ''}
         ${n > 1 ? `<span class="pill">${n} flags</span>` : ''}
         <span class="muted small">${when(f.created_at)}</span>
       </div>
@@ -459,6 +477,125 @@ async function setFlagStatus(id, status) {
   await call(sb.from('lift_flags').update({ status }).eq('id', id), status === 'ok' ? 'Marked as fine' : 'Marked as dealt with');
   loadFlags();
   loadStats();
+}
+
+
+// ---------- User profile (click any name) ----------
+// Everything about one account for moderation, including private workouts (read from their app
+// backup by admin_user_profile; every look is logged in admin_views).
+let lastTab = 'stats';
+let openUserId = null;
+const userLink = (id, username) => (id ? `<button class="who" onclick="openUser('${id}')">@${esc(username ?? 'unknown')}</button>` : '@unknown');
+const humanize = (id) => String(id ?? '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+const num = (v) => +(+v).toFixed(2);
+function setText(s) {
+  const tag = s.type && s.type !== 'normal' ? `<span class="pill priv">${esc(s.type)}</span> ` : '';
+  const parts = [];
+  if (s.weightL != null || s.weightR != null || s.repsL != null || s.repsR != null)
+    parts.push(`L ${s.weightL != null ? num(s.weightL) + ' kg × ' : ''}${s.repsL ?? '?'} · R ${s.weightR != null ? num(s.weightR) + ' kg × ' : ''}${s.repsR ?? '?'}`);
+  else if (s.weight != null || s.reps != null) parts.push(`${s.weight != null ? num(s.weight) + ' kg' : 'bodyweight'} × ${s.reps ?? '?'}`);
+  if (s.durationSec) parts.push(`${Math.floor(s.durationSec / 60)}:${String(s.durationSec % 60).padStart(2, '0')}`);
+  if (s.distanceKm) parts.push(`${num(s.distanceKm)} km`);
+  return tag + (parts.join(' · ') || '—') + (s.done === false ? ' <span class="muted">(not ticked)</span>' : '');
+}
+async function openUser(id) {
+  openUserId = id;
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));
+  ['stats', 'reports', 'users', 'inbox', 'flags'].forEach((t) => $('tab-' + t).classList.add('hidden'));
+  const el = $('tab-user');
+  el.classList.remove('hidden');
+  if (el.dataset.id !== id) el.innerHTML = '<div class="card muted">Loading profile…</div>';
+  el.dataset.id = id;
+  window.scrollTo(0, 0);
+  let d;
+  try { d = await call(sb.rpc('admin_user_profile', { target: id, max_workouts: 200 })); }
+  catch { el.innerHTML = `<div class="card"><p>Couldn’t load this profile.</p><p class="muted small">If it says the function doesn’t exist, re-run supabase/schema.sql (section 16) in Supabase.</p><button class="ghost" onclick="closeUser()">← Back</button></div>`; return; }
+  const p = d.profile ?? {};
+  const names = Object.fromEntries((d.custom_exercises ?? []).map((e) => [e.id, e.name]));
+  const exName = (eid) => names[eid] ?? humanize(eid);
+  const openReports = (d.reports ?? []).filter((r) => r.status === 'open').length;
+  const openFlags = (d.flags ?? []).filter((f) => f.status === 'open').length;
+  const kg = (v) => (v == null ? '?' : `${num(v)} kg`);
+  const workouts = d.workouts ?? [];
+  const privateCount = workouts.filter((w) => w.visibility === 'private').length;
+
+  el.innerHTML = `
+    <div class="row" style="margin-bottom:12px"><button class="ghost" onclick="closeUser()">← Back</button></div>
+    <div class="card">
+      <div class="prof-head">
+        ${p.avatar_url ? `<img src="${esc(p.avatar_url)}" alt="">` : '<div class="ph"></div>'}
+        <div style="flex:1;min-width:0">
+          <h1>${esc(p.name || p.username || 'Unknown')}</h1>
+          <div class="muted">@${esc(p.username)}</div>
+          <div class="row" style="margin-top:6px">
+            ${p.is_private ? '<span class="pill priv">private account</span>' : '<span class="pill ok">public account</span>'}
+            ${p.banned ? '<span class="pill">banned</span>' : ''}
+            ${d.elite ? `<span class="elite-on">👑 Elite${d.elite_until ? ' until ' + new Date(d.elite_until).toLocaleDateString() : ''}</span>` : ''}
+            ${d.developer ? '<span class="pill priv">developer</span>' : ''}
+            ${openReports ? `<span class="pill">${openReports} open report${openReports > 1 ? 's' : ''}</span>` : ''}
+            ${openFlags ? `<span class="pill">${openFlags} lift${openFlags > 1 ? 's' : ''} to check</span>` : ''}
+          </div>
+        </div>
+      </div>
+      ${p.bio ? `<div class="quote">${esc(p.bio)}</div>` : ''}
+      <div class="kv">
+        <div>Joined<b>${when(d.joined_at)}</b></div>
+        <div>Last opened app<b>${ago(d.last_sign_in_at)}</b></div>
+        <div>Last workout<b>${ago(p.last_workout_at)}</b></div>
+        <div>Workouts logged<b>${d.workout_count}</b></div>
+        <div>Shared to feed<b>${d.shared_workouts}</b></div>
+        <div>Followers · following<b>${d.followers} · ${d.following}</b></div>
+        <div>Reports about them<b>${(d.reports ?? []).length}</b></div>
+        <div>Reports they made<b>${d.reports_made}</b></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="danger" onclick="setFlag('admin_set_banned','${id}',${!p.banned},'${p.banned ? 'Unbanned' : 'Banned'} @${esc(p.username)}')">${p.banned ? 'Unban' : 'Ban'}</button>
+        ${d.elite
+          ? `<button class="ghost" onclick="giveElite('${id}','${esc(p.username)}')">Change Elite</button><button class="danger" onclick="removeElite('${id}','${esc(p.username)}')">Remove Elite</button>`
+          : `<button onclick="giveElite('${id}','${esc(p.username)}')">Give Elite</button>`}
+      </div>
+    </div>
+
+    <h2>Reports about them</h2>
+    ${(d.reports ?? []).length ? `<div class="list">${d.reports.map((r) => `<div class="card">
+      <div class="row"><span class="pill ${r.status === 'resolved' ? 'ok' : ''}">${esc(r.status)}</span><b>${esc(r.reason)}</b><span class="muted small">${esc(r.content_type)} · ${when(r.created_at)} · by @${esc(r.reporter ?? '?')}</span></div>
+      ${r.details ? `<p class="small">${esc(r.details)}</p>` : ''}
+      ${r.status === 'open' ? `<div class="row"><button class="ghost" onclick="resolve('${r.id}').then(() => openUser('${id}'))">Mark resolved</button></div>` : ''}
+    </div>`).join('')}</div>` : '<div class="card muted">Nobody has reported them.</div>'}
+
+    <h2>Flagged lifts</h2>
+    ${(d.flags ?? []).length ? `<div class="card">${d.flags.map((f) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
+      <span class="pill ${f.status === 'open' ? '' : 'ok'}">${f.status === 'open' ? 'To check' : f.status === 'ok' ? 'Looks fine' : 'Dealt with'}</span>
+      <b>${esc(f.exercise_name || exName(f.exercise_id))}</b> ${kg(f.weight_kg)} × ${f.reps ?? '?'}
+      <span class="muted small">${f.first_time ? `first time, ≈ ${kg(f.e1rm_kg)} 1RM` : `+${f.increase_pct}% (${kg(f.prev_best_kg)} → ${kg(f.e1rm_kg)})`} · ${when(f.created_at)}</span>
+      ${f.status === 'open' ? `<button class="ghost toggle" onclick="setFlagStatus('${f.id}','ok').then(() => openUser('${id}'))">Looks fine</button><button class="ghost toggle" onclick="setFlagStatus('${f.id}','actioned').then(() => openUser('${id}'))">Dealt with</button>` : ''}
+    </div>`).join('')}</div>` : '<div class="card muted">No flagged lifts.</div>'}
+
+    <h2>Workouts <span class="muted small" style="font-weight:400">${d.workout_count > workouts.length ? `newest ${workouts.length} of ${d.workout_count}` : `${workouts.length}`} · ${privateCount} private · from their app backup${d.app_data_updated_at ? ', synced ' + ago(d.app_data_updated_at) : ''}</span></h2>
+    ${workouts.length ? `<div class="card">${workouts.map((w) => {
+      const mins = w.endedAt && w.startedAt ? Math.round((w.endedAt - w.startedAt) / 60000) : null;
+      const sets = (w.exercises ?? []).reduce((n, e) => n + (e.sets?.length ?? 0), 0);
+      return `<details class="wk"><summary>
+        <b>${esc(w.name || 'Workout')}</b>
+        <span class="muted small">${when(w.startedAt)}${mins != null ? ` · ${mins} min` : ''} · ${(w.exercises ?? []).length} exercises · ${sets} sets</span>
+        <span class="pill ${w.visibility === 'private' ? 'priv' : 'ok'}">${w.visibility === 'private' ? 'private' : 'followers'}</span>
+        ${w.imported ? '<span class="pill priv">imported</span>' : ''}
+        ${(w.prExerciseIds ?? []).length ? `<span class="pill">${w.prExerciseIds.length} PR</span>` : ''}
+      </summary>
+      ${w.description ? `<div class="quote small">${esc(w.description)}</div>` : ''}
+      ${(w.exercises ?? []).map((e) => `<div class="ex"><b>${esc(exName(e.exerciseId))}</b>${(w.prExerciseIds ?? []).includes(e.exerciseId) ? ' <span class="pill">PR</span>' : ''}
+        <div class="sets">${(e.sets ?? []).map((s, i) => `${i + 1}. ${setText(s)}`).join('<br>') || 'No sets'}</div>
+        ${e.notes ? `<div class="small muted">Note: ${esc(e.notes)}</div>` : ''}</div>`).join('')}
+      ${(w.media ?? []).filter((m) => m.url && /^https:/.test(m.url) && m.type !== 'video').map((m) => `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(m.url)}" style="height:90px;border-radius:8px;margin:8px 6px 0 0"></a>`).join('')}
+      </details>`;
+    }).join('')}</div>` : `<div class="card muted">${d.app_data_updated_at ? 'No workouts logged.' : 'No app backup yet (they haven’t synced from the app).'}</div>`}`;
+}
+function closeUser() {
+  openUserId = null;
+  $('tab-user').classList.add('hidden');
+  $('tab-user').dataset.id = '';
+  const b = document.querySelector(`.tabs button[data-tab="${lastTab}"]`);
+  (b ?? document.querySelector('.tabs button')).click();
 }
 
 // Supabase calls made inside its own auth callback can lock up (the page then stays blank), so
