@@ -53,6 +53,12 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
     <div id="who" class="row small muted"></div>
   </div>
 
+  <!-- Shown while starting up, so the page is never just blank. -->
+  <section id="loading" class="card" style="max-width:420px">
+    <p class="muted" id="loadingText">Loading…</p>
+    <button class="ghost hidden" id="retry">Try again</button>
+  </section>
+
   <section id="signin" class="card hidden" style="max-width:420px">
     <h1>Developer sign-in</h1>
     <p class="muted small">Use your Endeavour account. Only accounts in the developers table can see the dashboard.</p>
@@ -111,7 +117,14 @@ const SUPABASE_URL = 'https://yulqaprpkytkzmfpxhca.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_mD1yxHvcuC2K0UGli1mJtQ_Iox5Pvq8';
 // Stays signed in on this browser (the session is kept and refreshed until you sign out).
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    // Supabase's cross-tab lock can get stuck (two dashboard tabs, a sleeping tab), and then every
+    // call waits forever and the page stays blank. One person uses this page, so skip the lock.
+    lock: async (_name, _timeout, fn) => fn(),
+  },
 });
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -134,7 +147,7 @@ async function call(promise, ok) {
   if (ok) toast(ok);
   return data;
 }
-const show = (id) => ['signin', 'setpw', 'denied', 'app'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
+const show = (id) => ['loading', 'signin', 'setpw', 'denied', 'app'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
 
 // ---------- Sign-in ----------
 // The last email used is filled in for you.
@@ -161,8 +174,32 @@ $('setpwCancel').onclick = () => start();
 const signOut = async () => { await sb.auth.signOut(); location.reload(); };
 $('signout2').onclick = signOut;
 
+/** Rejects if `promise` takes longer than `ms` (a stuck network call shouldn't hang the page). */
+const withTimeout = (promise, ms) =>
+  Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error('Timed out')), ms))]);
+
+let starting = false;
 async function start() {
-  const { data: { session } } = await sb.auth.getSession();
+  // One start-up at a time (the auth event and the page load can both ask for one).
+  if (starting) return;
+  starting = true;
+  show('loading');
+  $('loadingText').textContent = 'Loading…';
+  $('retry').classList.add('hidden');
+  try {
+    await startInner();
+  } catch (e) {
+    // Never leave a blank page: say what went wrong and offer to try again (or sign in).
+    $('loadingText').textContent = `Couldn’t load the dashboard: ${e?.message ?? e}. Check your connection.`;
+    $('retry').classList.remove('hidden');
+  } finally {
+    starting = false;
+  }
+}
+$('retry').onclick = () => start();
+
+async function startInner() {
+  const { data: { session } } = await withTimeout(sb.auth.getSession(), 10000);
   if (!session) return show('signin');
   try { localStorage.setItem('dashEmail', session.user.email); } catch {}
   $('who').innerHTML = `${esc(session.user.email)} <button class="ghost toggle" id="setpwBtn">Set a dashboard password</button> <button class="ghost toggle" id="signout">Sign out</button>`;
@@ -172,7 +209,8 @@ async function start() {
     show('setpw');
     $('pwNew').focus();
   };
-  const { data: isDev } = await sb.rpc('is_developer');
+  const { data: isDev, error: devError } = await withTimeout(sb.rpc('is_developer'), 10000);
+  if (devError) throw devError;
   if (!isDev) return show('denied');
   show('app');
   loadStats();
@@ -406,7 +444,12 @@ async function setFlagStatus(id, status) {
   loadStats();
 }
 
-sb.auth.onAuthStateChange((event) => event === 'SIGNED_IN' && start());
+// Supabase calls made inside its own auth callback can lock up (the page then stays blank), so
+// start-up runs just after the callback instead of inside it.
+sb.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_IN') setTimeout(start, 0);
+  if (event === 'SIGNED_OUT') setTimeout(() => show('signin'), 0);
+});
 start();
 </script>
 </body>
