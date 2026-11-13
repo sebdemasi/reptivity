@@ -331,6 +331,7 @@ async function loadReports() {
         ${r.content_type !== 'profile' ? `<button class="danger" onclick="removeContent('${r.content_type}','${r.content_id}','${r.id}')">Remove ${r.content_type}</button>` : ''}
         ${target ? `<button class="danger" onclick="setFlag('admin_set_banned','${target.id}',${!target.banned},'${target.banned ? 'Unbanned' : 'Banned'}')">${target.banned ? 'Unban' : 'Ban'} @${esc(target.username)}</button>` : ''}
         ${r.status === 'open' ? `<button class="ghost" onclick="resolve('${r.id}')">Mark resolved</button>` : ''}
+        <button class="ghost" onclick="deleteReport('${r.id}')">Delete report</button>
       </div></div>`;
   }).join('')}</div>` : '<div class="card muted">No reports. 🎉</div>';
 }
@@ -399,9 +400,25 @@ async function loadInbox() {
       <div class="row"><span class="pill ${f.status === 'done' ? 'ok' : ''}">${esc(kinds[f.kind] ?? f.kind)}</span>${f.rating ? `<span>${'★'.repeat(f.rating)}<span class="muted">${'★'.repeat(5 - f.rating)}</span></span>` : ''}<span class="muted small">${when(f.created_at)}</span></div>
       <div class="quote">${esc(f.message)}</div>
       <p class="small muted">@${esc(p?.username ?? 'unknown')} · Endeavour ${esc(f.app_version)} · ${esc(f.platform)}</p>
-      ${f.status === 'new' ? `<button class="ghost" onclick="markDone('${f.id}')">Mark done</button>` : ''}
+      <div class="row">
+        ${f.status === 'new' ? `<button class="ghost" onclick="markDone('${f.id}')">Mark done</button>` : ''}
+        <button class="ghost" onclick="deleteFeedback('${f.id}')">Delete</button>
+      </div>
     </div>`;
   }).join('')}</div>` : '<div class="card muted">No feedback yet.</div>';
+}
+// Deleting only removes the report / message itself, never the reported content or the account.
+async function deleteReport(id) {
+  if (!confirm('Delete this report? (The reported post or account isn’t touched.)')) return;
+  await call(sb.from('reports').delete().eq('id', id), 'Report deleted');
+  loadReports();
+  loadStats();
+}
+async function deleteFeedback(id) {
+  if (!confirm('Delete this message?')) return;
+  await call(sb.from('feedback').delete().eq('id', id), 'Deleted');
+  loadInbox();
+  loadStats();
 }
 async function markDone(id) {
   await call(sb.from('feedback').update({ status: 'done' }).eq('id', id), 'Marked done');
