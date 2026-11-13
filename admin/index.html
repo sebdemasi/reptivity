@@ -56,6 +56,7 @@ details.wk summary::-webkit-details-marker{display:none}
 details.wk summary::before{content:'▸';color:var(--muted)}details.wk[open] summary::before{content:'▾'}
 .ex{margin:10px 0 0 18px}.ex b{font-size:14px}.sets{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .pill.priv{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.owner{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.6px;padding:1px 6px;border-radius:5px;background:#F5C518;color:#1A1405;vertical-align:middle;margin-left:4px}
 </style>
 </head>
 <body>
@@ -115,7 +116,7 @@ details.wk summary::before{content:'▸';color:var(--muted)}details.wk[open] sum
     <div id="tab-reports" class="hidden"></div>
     <div id="tab-users" class="hidden">
       <div class="row" style="margin-bottom:12px"><input id="userSearch" placeholder="Search by name or @username" style="flex:1"><button id="userGo">Search</button></div>
-      <div class="card" style="overflow-x:auto"><table><thead><tr><th>User</th><th class="hide-sm">Joined</th><th class="hide-sm">Last seen</th><th>Banned</th><th>Elite</th><th>Dev</th></tr></thead><tbody id="userRows"></tbody></table></div>
+      <div class="card" style="overflow-x:auto"><table><thead><tr><th>User</th><th class="hide-sm">Joined</th><th class="hide-sm">Last seen</th><th>Banned</th><th>Elite</th><th>Dev</th><th>Owner</th></tr></thead><tbody id="userRows"></tbody></table></div>
     </div>
     <div id="tab-inbox" class="hidden"></div>
     <div id="tab-flags" class="hidden"></div>
@@ -226,6 +227,7 @@ async function startInner() {
   if (devError) throw devError;
   if (!isDev) return show('denied');
   show('app');
+  await loadOwners();
   loadStats();
   loadReports();
   loadInbox();
@@ -365,7 +367,7 @@ async function resolve(id) {
 async function loadUsers() {
   const rows = await call(sb.rpc('admin_users', { search: $('userSearch').value.trim() }));
   $('userRows').innerHTML = rows.map((u) => `<tr>
-    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button> <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span></td>
+    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button>${u.owner ? '<span class="owner">👑 OWNER</span>' : ''} <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span></td>
     <td class="hide-sm small">${when(u.created_at)}</td>
     <td class="hide-sm small">${ago(u.last_sign_in_at)}</td>
     <td>${flag('admin_set_banned', u.id, u.banned, 'Banned')}</td>
@@ -373,7 +375,8 @@ async function loadUsers() {
       ? `<div class="elite-on">👑 Elite</div><div class="muted small">${u.elite_until ? 'until ' + new Date(u.elite_until).toLocaleDateString() : 'no end date'}</div>
          <div class="row tight"><button class="toggle ghost" onclick="giveElite('${u.id}', '${esc(u.username)}')">Change</button><button class="toggle danger" onclick="removeElite('${u.id}', '${esc(u.username)}')">Remove</button></div>`
       : `<button class="toggle" onclick="giveElite('${u.id}', '${esc(u.username)}')">Give Elite</button>`}</td>
-    <td>${flag('admin_set_developer', u.id, u.developer, 'Dev')}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No accounts found.</td></tr>';
+    <td>${flag('admin_set_developer', u.id, u.developer, 'Dev')}</td>
+    <td>${flag('admin_set_owner', u.id, u.owner, 'Owner tag')}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No accounts found.</td></tr>';
 }
 const flag = (fn, id, on, label) =>
   `<button class="toggle ${on ? '' : 'ghost'}" onclick="setFlag('${fn}','${id}',${!on},'${label} ${on ? 'off' : 'on'}')">${on ? 'Yes' : 'No'}</button>`;
@@ -396,7 +399,9 @@ async function giveElite(id, name) {
 }
 async function setFlag(fn, id, value, done) {
   if (fn !== 'admin_set_elite' && !confirm(`${done}?`)) return;
+  // The app reads the owner list about once an hour, so a change shows on phones after that or on reopen.
   await call(sb.rpc(fn, { target: id, value }), done);
+  if (fn === 'admin_set_owner') await loadOwners();
   loadUsers();
   loadReports();
   loadStats();
@@ -484,8 +489,15 @@ async function setFlagStatus(id, status) {
 // Everything about one account for moderation, including private workouts (read from their app
 // backup by admin_user_profile; every look is logged in admin_views).
 let lastTab = 'stats';
+// Accounts with the gold OWNER tag (owners table), shown beside their names here too.
+let owners = new Set();
+async function loadOwners() {
+  const { data, error } = await sb.from('owners').select('user_id');
+  if (!error) owners = new Set((data ?? []).map((r) => r.user_id));
+}
+const ownerTag = (id) => (owners.has(id) ? '<span class="owner">👑 OWNER</span>' : '');
 let openUserId = null;
-const userLink = (id, username) => (id ? `<button class="who" onclick="openUser('${id}')">@${esc(username ?? 'unknown')}</button>` : '@unknown');
+const userLink = (id, username) => (id ? `<button class="who" onclick="openUser('${id}')">@${esc(username ?? 'unknown')}</button>${ownerTag(id)}` : '@unknown');
 const humanize = (id) => String(id ?? '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 const num = (v) => +(+v).toFixed(2);
 function setText(s) {
@@ -522,10 +534,11 @@ async function openUser(id) {
   el.innerHTML = `
     <div class="row" style="margin-bottom:12px"><button class="ghost" onclick="closeUser()">← Back</button></div>
     <div class="card">
+      ${p.banner_url ? `<a href="${esc(p.banner_url)}" target="_blank" rel="noopener"><img src="${esc(p.banner_url)}" alt="Profile banner" style="width:100%;aspect-ratio:3;object-fit:cover;border-radius:10px;margin-bottom:12px;display:block"></a>` : ''}
       <div class="prof-head">
         ${p.avatar_url ? `<img src="${esc(p.avatar_url)}" alt="">` : '<div class="ph"></div>'}
         <div style="flex:1;min-width:0">
-          <h1>${esc(p.name || p.username || 'Unknown')}</h1>
+          <h1>${esc(p.name || p.username || 'Unknown')}${ownerTag(id)}</h1>
           <div class="muted">@${esc(p.username)}</div>
           <div class="row" style="margin-top:6px">
             ${p.is_private ? '<span class="pill priv">private account</span>' : '<span class="pill ok">public account</span>'}
