@@ -354,8 +354,24 @@ async function loadReports() {
 }
 async function removeContent(type, id, reportId) {
   if (!confirm(`Remove this ${type} for everyone?`)) return;
-  await call(sb.from(type === 'comment' ? 'workout_comments' : 'workouts').delete().eq('id', id), 'Removed');
+  if (type === 'workout') await removeWorkoutCall(id);
+  else await call(sb.from('workout_comments').delete().eq('id', id), 'Removed');
   await resolve(reportId);
+}
+/**
+ * Removes a posted workout everywhere and stops the owner's phone uploading it again
+ * (admin_remove_workout, schema section 19). Before that section is run, it just deletes it.
+ */
+async function removeWorkoutCall(id) {
+  const { error } = await sb.rpc('admin_remove_workout', { target: id });
+  if (!error) return toast('Workout removed');
+  if (error.code !== 'PGRST202') { toast(error.message); throw error; }
+  await call(sb.from('workouts').delete().eq('id', id), 'Removed (re-run the schema so it can’t be re-uploaded)');
+}
+async function removeWorkout(id, userId, name) {
+  if (!confirm(`Remove “${name}” from every feed and their profile? They keep it in their own history.`)) return;
+  await removeWorkoutCall(id);
+  openUser(userId);
 }
 async function resolve(id) {
   await call(sb.from('reports').update({ status: 'resolved' }).eq('id', id), 'Resolved');
@@ -529,6 +545,13 @@ async function openUser(id) {
   const openFlags = (d.flags ?? []).filter((f) => f.status === 'open').length;
   const kg = (v) => (v == null ? '?' : `${num(v)} kg`);
   const workouts = d.workouts ?? [];
+  // Which of their workouts are posted to the feed right now, and which were removed by a developer.
+  const [{ data: postedRows }, { data: removedRows }] = await Promise.all([
+    sb.from('workouts').select('id').eq('user_id', id),
+    sb.from('removed_workouts').select('id').eq('user_id', id),
+  ]);
+  const posted = new Set((postedRows ?? []).map((r) => r.id));
+  const removed = new Set((removedRows ?? []).map((r) => r.id));
   const privateCount = workouts.filter((w) => w.visibility === 'private').length;
 
   el.innerHTML = `
@@ -593,8 +616,10 @@ async function openUser(id) {
         <span class="muted small">${when(w.startedAt)}${mins != null ? ` · ${mins} min` : ''} · ${(w.exercises ?? []).length} exercises · ${sets} sets</span>
         <span class="pill ${w.visibility === 'private' ? 'priv' : 'ok'}">${w.visibility === 'private' ? 'private' : 'followers'}</span>
         ${w.imported ? '<span class="pill priv">imported</span>' : ''}
+        ${removed.has(w.id) ? '<span class="pill">removed</span>' : posted.has(w.id) ? '<span class="pill ok">posted</span>' : ''}
         ${(w.prExerciseIds ?? []).length ? `<span class="pill">${w.prExerciseIds.length} PR</span>` : ''}
       </summary>
+      ${posted.has(w.id) && !removed.has(w.id) ? `<div class="row" style="margin:8px 0 0 18px"><button class="danger toggle" onclick="removeWorkout('${esc(w.id)}','${id}','${esc((w.name || 'Workout').replace(/['"\\]/g, ''))}')">Remove from feed</button></div>` : ''}
       ${w.description ? `<div class="quote small">${esc(w.description)}</div>` : ''}
       ${(w.exercises ?? []).map((e) => `<div class="ex"><b>${esc(exName(e.exerciseId))}</b>${(w.prExerciseIds ?? []).includes(e.exerciseId) ? ' <span class="pill">PR</span>' : ''}
         <div class="sets">${(e.sets ?? []).map((s, i) => `${i + 1}. ${setText(s)}`).join('<br>') || 'No sets'}</div>
