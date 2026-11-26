@@ -258,6 +258,11 @@ async function loadStats() {
     <h2>Sign-ups per week</h2>
     <div class="card"><div class="bars">${weeks.map((w) => `<div style="height:${(w.count / max) * 100}%" title="Week of ${w.week}: ${w.count}"><span>${w.count}</span></div>`).join('') || '<p class="muted">No sign-ups in the last 12 weeks.</p>'}</div>
     <div class="row muted small" style="justify-content:space-between;margin-top:6px"><span>${weeks[0]?.week ?? ''}</span><span>${weeks[weeks.length - 1]?.week ?? ''}</span></div></div>
+    <h2>App versions (opened in the last 30 days)</h2>
+    <div class="card">${Object.entries(s.versions ?? {})
+      .sort((a, b) => b[0].localeCompare(a[0], undefined, { numeric: true }))
+      .map(([v, n]) => `<div class="row" style="justify-content:space-between"><span>${esc(v)}</span><b>${n}</b></div>`)
+      .join('') || '<p class="muted">No versions recorded yet. They appear as people open the latest build.</p>'}</div>
     <h2>Referrals</h2>
     <div class="card">
       <p><b>${s.referrals ?? 0}</b> friends referred · <b>${s.referral_rewards ?? 0}</b> rewards claimed</p>
@@ -383,7 +388,7 @@ async function resolve(id) {
 async function loadUsers() {
   const rows = await call(sb.rpc('admin_users', { search: $('userSearch').value.trim() }));
   $('userRows').innerHTML = rows.map((u) => `<tr>
-    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button>${u.owner ? '<span class="owner">👑 OWNER</span>' : ''} <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span></td>
+    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button>${u.owner ? '<span class="owner">👑 OWNER</span>' : ''} <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span>${u.app_version ? `<div class="muted small">App ${esc(u.app_version)}</div>` : ''}</td>
     <td class="hide-sm small">${when(u.created_at)}</td>
     <td class="hide-sm small">${ago(u.last_sign_in_at)}</td>
     <td>${flag('admin_set_banned', u.id, u.banned, 'Banned')}</td>
