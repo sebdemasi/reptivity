@@ -336,7 +336,7 @@ async function loadReports() {
     if (r.content_type === 'workout') {
       const w = ws.find((x) => x.id === r.content_id);
       if (!w) return '<p class="muted small">Workout already removed.</p>';
-      const photos = (w.media ?? []).filter((m) => m.url && m.type === 'image').map((m) => `<a href="${esc(m.url)}" target="_blank"><img src="${esc(m.url)}" style="height:90px;border-radius:8px;margin-right:6px"></a>`).join('');
+      const photos = (w.media ?? []).filter((m) => m.url && m.type === 'image').map((m) => `<a href="#" data-media-href="${esc(m.url)}" target="_blank"><img data-media="${esc(m.url)}" style="height:90px;border-radius:8px;margin-right:6px"></a>`).join('');
       return `<div class="quote"><b>${esc(w.name)}</b>${w.note ? '\n' + esc(w.note) : ''}</div>${photos}`;
     }
     const p = who(r.reported_user_id);
@@ -388,7 +388,7 @@ async function resolve(id) {
 async function loadUsers() {
   const rows = await call(sb.rpc('admin_users', { search: $('userSearch').value.trim() }));
   $('userRows').innerHTML = rows.map((u) => `<tr>
-    <td>${u.avatar_url ? `<img class="avatar" src="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button>${u.owner ? '<span class="owner">👑 OWNER</span>' : ''} <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span>${u.app_version ? `<div class="muted small">App ${esc(u.app_version)}</div>` : ''}</td>
+    <td>${u.avatar_url ? `<img class="avatar" data-media="${esc(u.avatar_url)}">` : ''} <button class="who" onclick="openUser('${u.id}')">${esc(u.name || u.username)}</button>${u.owner ? '<span class="owner">👑 OWNER</span>' : ''} <span class="muted small">@${esc(u.username)}${u.is_private ? ' · private' : ''}</span>${u.app_version ? `<div class="muted small">App ${esc(u.app_version)}</div>` : ''}</td>
     <td class="hide-sm small">${when(u.created_at)}</td>
     <td class="hide-sm small">${ago(u.last_sign_in_at)}</td>
     <td>${flag('admin_set_banned', u.id, u.banned, 'Banned')}</td>
@@ -562,9 +562,9 @@ async function openUser(id) {
   el.innerHTML = `
     <div class="row" style="margin-bottom:12px"><button class="ghost" onclick="closeUser()">← Back</button></div>
     <div class="card">
-      ${p.banner_url ? `<a href="${esc(p.banner_url)}" target="_blank" rel="noopener"><img src="${esc(p.banner_url)}" alt="Profile banner" style="width:100%;aspect-ratio:3;object-fit:cover;border-radius:10px;margin-bottom:12px;display:block"></a>` : ''}
+      ${p.banner_url ? `<a href="#" data-media-href="${esc(p.banner_url)}" target="_blank" rel="noopener"><img data-media="${esc(p.banner_url)}" alt="Profile banner" style="width:100%;aspect-ratio:3;object-fit:cover;border-radius:10px;margin-bottom:12px;display:block"></a>` : ''}
       <div class="prof-head">
-        ${p.avatar_url ? `<img src="${esc(p.avatar_url)}" alt="">` : '<div class="ph"></div>'}
+        ${p.avatar_url ? `<img data-media="${esc(p.avatar_url)}" alt="">` : '<div class="ph"></div>'}
         <div style="flex:1;min-width:0">
           <h1>${esc(p.name || p.username || 'Unknown')}${ownerTag(id)}</h1>
           <div class="muted">@${esc(p.username)}</div>
@@ -594,6 +594,7 @@ async function openUser(id) {
         ${d.elite
           ? `<button class="ghost" onclick="giveElite('${id}','${esc(p.username)}')">Change Elite</button><button class="danger" onclick="removeElite('${id}','${esc(p.username)}')">Remove Elite</button>`
           : `<button onclick="giveElite('${id}','${esc(p.username)}')">Give Elite</button>`}
+        <button class="danger" onclick="deleteAccount('${id}','${esc(p.username)}')">Delete account</button>
       </div>
     </div>
 
@@ -629,9 +630,38 @@ async function openUser(id) {
       ${(w.exercises ?? []).map((e) => `<div class="ex"><b>${esc(exName(e.exerciseId))}</b>${(w.prExerciseIds ?? []).includes(e.exerciseId) ? ' <span class="pill">PR</span>' : ''}
         <div class="sets">${(e.sets ?? []).map((s, i) => `${i + 1}. ${setText(s)}`).join('<br>') || 'No sets'}</div>
         ${e.notes ? `<div class="small muted">Note: ${esc(e.notes)}</div>` : ''}</div>`).join('')}
-      ${(w.media ?? []).filter((m) => m.url && /^https:/.test(m.url) && m.type !== 'video').map((m) => `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(m.url)}" style="height:90px;border-radius:8px;margin:8px 6px 0 0"></a>`).join('')}
+      ${(w.media ?? []).filter((m) => m.url && /^https:/.test(m.url) && m.type !== 'video').map((m) => `<a href="#" data-media-href="${esc(m.url)}" target="_blank" rel="noopener"><img data-media="${esc(m.url)}" style="height:90px;border-radius:8px;margin:8px 6px 0 0"></a>`).join('')}
       </details>`;
     }).join('')}</div>` : `<div class="card muted">${d.app_data_updated_at ? 'No workouts logged.' : 'No app backup yet (they haven’t synced from the app).'}</div>`}`;
+}
+/**
+ * Deletes an account for someone who asked by email (website /delete-account/). Photos first, through
+ * the Storage API (schema section 20 lets developers do it), then the account itself, which cascades
+ * to everything they own. Typing the username guards against deleting the wrong person.
+ */
+async function deleteAccount(id, username) {
+  const typed = prompt(`This permanently deletes @${username}'s account, workouts, photos and social activity. It can't be undone.\n\nType their username to confirm:`);
+  if (typed === null) return;
+  if (typed.trim().replace(/^@/, '').toLowerCase() !== String(username).toLowerCase()) return toast('Username didn’t match: nothing was deleted');
+  try {
+    const bucket = sb.storage.from('media');
+    const paths = [];
+    for (const folder of ['', 'avatar', 'banner', 'workouts']) {
+      const prefix = folder ? `${id}/${folder}` : id;
+      const { data } = await bucket.list(prefix, { limit: 1000 });
+      for (const f of data ?? []) if (f.id) paths.push(`${prefix}/${f.name}`);
+    }
+    if (paths.length) {
+      const { error } = await bucket.remove(paths);
+      if (error) throw error;
+    }
+    await call(sb.rpc('admin_delete_account', { target: id }), `Deleted @${username}'s account${paths.length ? ` and ${paths.length} photo${paths.length > 1 ? 's' : ''}` : ''}`);
+    closeUser();
+    loadUsers();
+    loadStats();
+  } catch (e) {
+    toast(e?.message ?? String(e));
+  }
 }
 function closeUser() {
   openUserId = null;
@@ -640,6 +670,32 @@ function closeUser() {
   const b = document.querySelector(`.tabs button[data-tab="${lastTab}"]`);
   (b ?? document.querySelector('.tabs button')).click();
 }
+
+
+// ---------- Uploaded photos (private bucket) ----------
+// Photos live in a private storage bucket, so the dashboard swaps each one's stored address for a
+// signed one (valid an hour; developers may view all media: schema.sql section 20). Anything rendered
+// with data-media / data-media-href is signed as soon as it appears on the page.
+const MEDIA_MARK = '/storage/v1/object/public/media/';
+async function signMedia() {
+  const els = [...document.querySelectorAll('[data-media]:not([data-signed]), [data-media-href]:not([data-signed])')];
+  if (!els.length) return;
+  els.forEach((el) => el.setAttribute('data-signed', '1'));
+  const urlOf = (el) => el.getAttribute('data-media') || el.getAttribute('data-media-href');
+  const paths = [...new Set(els.map(urlOf).filter((u) => u && u.includes(MEDIA_MARK)).map((u) => decodeURIComponent(u.split(MEDIA_MARK)[1].split('?')[0])))];
+  if (!paths.length) return;
+  const { data, error } = await sb.storage.from('media').createSignedUrls(paths, 3600);
+  if (error) return console.warn('Could not sign photos', error);
+  const signed = Object.fromEntries((data ?? []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+  for (const el of els) {
+    const u = urlOf(el);
+    const url = u && u.includes(MEDIA_MARK) ? signed[decodeURIComponent(u.split(MEDIA_MARK)[1].split('?')[0])] : null;
+    if (!url) continue;
+    if (el.hasAttribute('data-media')) el.src = url;
+    else el.href = url;
+  }
+}
+new MutationObserver(() => signMedia()).observe(document.body, { childList: true, subtree: true });
 
 // Supabase calls made inside its own auth callback can lock up (the page then stays blank), so
 // start-up runs just after the callback instead of inside it.
